@@ -135,6 +135,7 @@ export function VisionBoard() {
                 onClick={() => {
                   setEditingVision(null);
                   setNewVision({ title: "", description: "", category: "life" });
+                  setIsDialogOpen(true);
                 }}
                 className="rounded-full gradient-dream text-white press-effect"
               >

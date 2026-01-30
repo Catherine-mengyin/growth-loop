@@ -9,6 +9,7 @@ import { VisionBoard } from "./vision-board";
 import { Milestones } from "./milestones";
 import { Journal } from "./journal";
 import { AddTaskDialog } from "./add-task-dialog";
+import { UserSettings } from "./user-settings";
 import { LogOut, Settings } from "lucide-react";
 import {
   DropdownMenu,
@@ -22,6 +23,7 @@ export function GrowthLoopApp() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
 
   const handleTaskAdded = () => {
     setRefreshKey((prev) => prev + 1);
@@ -70,6 +72,10 @@ export function GrowthLoopApp() {
             <DropdownMenuItem disabled className="text-muted-foreground">
               <span className="truncate">{user.username}</span>
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowSettings(true)}>
+              <Settings className="w-4 h-4 mr-2" />
+              账号设置
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
               <LogOut className="w-4 h-4 mr-2" />
               退出登录
@@ -80,18 +86,26 @@ export function GrowthLoopApp() {
 
       {/* Main Content */}
       <main className="pt-14">
-        {activeTab === "dashboard" && <Dashboard key={`dashboard-${refreshKey}`} />}
-        {activeTab === "vision" && <VisionBoard />}
-        {activeTab === "milestones" && <Milestones />}
-        {activeTab === "journal" && <Journal />}
+        {showSettings ? (
+          <UserSettings onBack={() => setShowSettings(false)} />
+        ) : (
+          <>
+            {activeTab === "dashboard" && <Dashboard key={`dashboard-${refreshKey}`} />}
+            {activeTab === "vision" && <VisionBoard />}
+            {activeTab === "milestones" && <Milestones />}
+            {activeTab === "journal" && <Journal />}
+          </>
+        )}
       </main>
 
       {/* Floating Dock */}
-      <FloatingDock
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        onAddClick={() => setIsAddDialogOpen(true)}
-      />
+      {!showSettings && (
+        <FloatingDock
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          onAddClick={() => setIsAddDialogOpen(true)}
+        />
+      )}
 
       {/* Add Task Dialog */}
       <AddTaskDialog

@@ -36,6 +36,7 @@ export function AddTaskDialog({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedMilestone, setSelectedMilestone] = useState<string>("");
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadMilestones = async () => {
     if (user) {
@@ -62,20 +63,25 @@ export function AddTaskDialog({
   };
 
   const handleSubmit = async () => {
-    if (!user || !title.trim()) return;
+    if (!user || !title.trim() || isSubmitting) return;
 
-    await addTodo(user.id, {
-      title: title.trim(),
-      isFocus,
-      completed: false,
-      dueDate: new Date(dueDate).getTime(),
-      tags: selectedTags,
-      milestoneId: selectedMilestone || undefined,
-    });
+    setIsSubmitting(true);
+    try {
+      await addTodo(user.id, {
+        title: title.trim(),
+        isFocus,
+        completed: false,
+        dueDate: new Date(dueDate).getTime(),
+        tags: selectedTags,
+        milestoneId: selectedMilestone || undefined,
+      });
 
-    resetForm();
-    onOpenChange(false);
-    onTaskAdded();
+      resetForm();
+      onOpenChange(false);
+      onTaskAdded();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const toggleTag = (tag: string) => {
@@ -195,10 +201,10 @@ export function AddTaskDialog({
           {/* Submit */}
           <Button
             onClick={handleSubmit}
-            disabled={!title.trim()}
+            disabled={!title.trim() || isSubmitting}
             className="w-full h-12 rounded-xl gradient-peach text-white font-medium press-effect"
           >
-            添加任务
+            {isSubmitting ? "添加中..." : "添加任务"}
           </Button>
         </div>
       </DialogContent>

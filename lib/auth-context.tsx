@@ -20,6 +20,9 @@ interface AuthContextType {
     password: string
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  updateUsername: (username: string) => Promise<{ success: boolean; error?: string }>;
+  updateEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
+  updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -147,8 +150,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const updateUsername = async (username: string): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: "未登录" };
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ username })
+      .eq("id", user.id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    setUser({ ...user, username });
+    return { success: true };
+  };
+
+  const updateEmail = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    const { error } = await supabase.auth.updateUser({ email });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (user) {
+      setUser({ ...user, email });
+    }
+    return { success: true };
+  };
+
+  const updatePassword = async (password: string): Promise<{ success: boolean; error?: string }> => {
+    const { error } = await supabase.auth.updateUser({ password });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateUsername, updateEmail, updatePassword }}>
       {children}
     </AuthContext.Provider>
   );
