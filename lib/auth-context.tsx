@@ -114,17 +114,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string
   ): Promise<{ success: boolean; error?: string }> => {
-    // 先检查用户名是否已存在
-    const { data: existingUser } = await supabase
-      .from("profiles")
-      .select("username")
-      .eq("username", username)
-      .single();
-
-    if (existingUser) {
-      return { success: false, error: "用户名已存在" };
-    }
-
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
