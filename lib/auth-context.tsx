@@ -114,9 +114,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string
   ): Promise<{ success: boolean; error?: string }> => {
+    // 通过 metadata 传递用户名，触发器会自动创建 profile
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          username,
+        },
+      },
     });
 
     if (error) {
@@ -124,16 +130,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (data.user) {
-      // 创建用户资料
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: data.user.id,
-        username,
-      });
-
-      if (profileError) {
-        return { success: false, error: "创建用户资料失败" };
-      }
-
       setUser({
         id: data.user.id,
         username,
