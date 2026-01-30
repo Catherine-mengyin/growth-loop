@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { JSX } from "react";
 
-type ViewMode = "list" | "view" | "mood" | "questions";
+type ViewMode = "list" | "view" | "mood" | "questions" | "bulk-edit" | "preview";
 
 const MOODS = [
   { value: 5, emoji: "Grinning", label: "非常开心", color: "#4ADE80" },
@@ -101,6 +101,7 @@ export function Journal() {
   const [selectedMood, setSelectedMood] = useState<number | null>(null);
   const [moodNote, setMoodNote] = useState("");
   const [editingMoodEntry, setEditingMoodEntry] = useState<MoodEntry | null>(null);
+  const [showMoodInput, setShowMoodInput] = useState(false);
 
   // Questions state
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -270,7 +271,19 @@ export function Journal() {
     </div>
   );
 
-  // Render questions view
+  // Handle keyboard in questions view - Enter to next, Shift+Enter for newline
+  const handleQuestionKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (currentQuestionIndex < QUESTIONS.length - 1) {
+        setCurrentQuestionIndex((i) => i + 1);
+      } else {
+        handleSaveQuestions();
+      }
+    }
+  };
+
+  // Render questions view (one by one for new entries)
   const renderQuestionsView = () => {
     const question = QUESTIONS[currentQuestionIndex];
     if (!question) return null;
@@ -300,7 +313,8 @@ export function Journal() {
           <Textarea
             value={answers[question.id] || ""}
             onChange={(e) => setAnswers({ ...answers, [question.id]: e.target.value })}
-            placeholder="写下你的想法..."
+            onKeyDown={handleQuestionKeyDown}
+            placeholder="写下你的想法...（Enter 下一题，Shift+Enter 换行）"
             className="min-h-28 rounded-2xl resize-none"
           />
         </div>
@@ -347,24 +361,190 @@ export function Journal() {
     );
   };
 
+  // Render bulk edit view (all questions at once for editing)
+  const renderBulkEditView = () => (
+    <div className="space-y-6">
+      <div className="glass-card rounded-3xl p-6">
+        <h2 className="text-lg font-bold text-foreground mb-4">编辑今日反思</h2>
+        <div className="space-y-5">
+          {QUESTIONS.map((question) => (
+            <div key={question.id} className="space-y-2">
+              <label className="text-sm font-medium text-foreground">{question.title}</label>
+              <p className="text-xs text-muted-foreground">{question.prompt}</p>
+              <Textarea
+                value={answers[question.id] || ""}
+                onChange={(e) => setAnswers({ ...answers, [question.id]: e.target.value })}
+                placeholder="写下你的想法..."
+                className="min-h-20 rounded-xl resize-none"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <Button
+          variant="outline"
+          onClick={() => setViewMode("list")}
+          className="flex-1 rounded-xl bg-transparent"
+        >
+          取消
+        </Button>
+        <Button
+          onClick={handleSaveQuestions}
+          className="flex-1 rounded-xl gradient-mint text-white press-effect"
+        >
+          <Check className="w-4 h-4 mr-1" />
+          保存
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Render preview view (full view of today's journal)
+  const renderPreviewView = () => {
+    const journal = todayJournal;
+    if (!journal) return null;
+
+    return (
+      <div className="space-y-4">
+        <div className="glass-card rounded-3xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-semibold text-foreground">今日反思</h3>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setViewMode("bulk-edit")}
+              className="rounded-xl bg-transparent"
+            >
+              <Edit3 className="w-4 h-4 mr-1" />
+              编辑
+            </Button>
+          </div>
+
+          {journal.answers?.some((a) => a.content) ? (
+            <div className="space-y-5">
+              {journal.answers.map((answer) => {
+                const question = QUESTIONS.find((q) => q.id === answer.questionId);
+                if (!question || !answer.content) return null;
+
+                return (
+                  <div key={answer.questionId} className="space-y-2">
+                    <span className="inline-block px-3 py-1 rounded-full bg-secondary text-xs text-secondary-foreground">
+                      {question.title}
+                    </span>
+                    <p className="text-foreground text-sm leading-relaxed whitespace-pre-wrap pl-1">
+                      {answer.content}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-center py-4">还没有写反思内容</p>
+          )}
+        </div>
+
+        <Button
+          variant="outline"
+          onClick={() => setViewMode("list")}
+          className="w-full rounded-xl"
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" />
+          返回
+        </Button>
+      </div>
+    );
+  };
+
+  // Handle quick mood submit with Enter
+  const handleQuickMoodKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleQuickMoodSubmit();
+    }
+  };
+
+  // Quick mood submit from inline form
+  const handleQuickMoodSubmit = async () => {
+    if (!user || selectedMood === null) return;
+    const journal = await getOrCreateTodayJournal(user.id);
+    await addMoodEntry(user.id, journal.id, selectedMood as 1 | 2 | 3 | 4 | 5, moodNote.trim() || undefined);
+    setSelectedMood(null);
+    setMoodNote("");
+    setShowMoodInput(false);
+    loadData();
+  };
+
+  // Handle inline mood selection
+  const handleInlineMoodSelect = (mood: number) => {
+    setSelectedMood(mood);
+    setShowMoodInput(true);
+  };
+
   // Render list view
   const renderListView = () => (
     <div className="space-y-4">
-      {/* Today's mood timeline */}
+      {/* Quick mood recording */}
       <div className="glass-card rounded-3xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-foreground">今日心情</h3>
-          <Button
-            size="sm"
-            onClick={handleStartMoodRecord}
-            className="rounded-xl gradient-peach text-white press-effect"
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            记录心情
-          </Button>
+        <h3 className="font-semibold text-foreground mb-3">此刻心情如何？</h3>
+
+        <div className="flex justify-center gap-2 md:gap-3 mb-4">
+          {MOODS.map((mood) => (
+            <button
+              key={mood.value}
+              type="button"
+              onClick={() => handleInlineMoodSelect(mood.value)}
+              className={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all press-effect ${
+                selectedMood === mood.value ? "bg-secondary scale-110" : "hover:bg-secondary/50"
+              }`}
+            >
+              <MoodEmoji mood={mood.value} size={32} />
+              <span className="text-[10px] text-muted-foreground">{mood.label}</span>
+            </button>
+          ))}
         </div>
 
-        {todayJournal?.moodEntries && todayJournal.moodEntries.length > 0 ? (
+        {showMoodInput && selectedMood !== null && (
+          <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+            <Textarea
+              value={moodNote}
+              onChange={(e) => setMoodNote(e.target.value)}
+              onKeyDown={handleQuickMoodKeyDown}
+              placeholder="想说点什么？（选填，Enter 提交）"
+              className="min-h-16 rounded-xl resize-none text-sm"
+              maxLength={200}
+              autoFocus
+            />
+            <div className="flex justify-between items-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMood(null);
+                  setShowMoodInput(false);
+                  setMoodNote("");
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                取消
+              </button>
+              <Button
+                size="sm"
+                onClick={handleQuickMoodSubmit}
+                className="rounded-xl gradient-peach text-white press-effect"
+              >
+                <Check className="w-4 h-4 mr-1" />
+                记录
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Today's mood timeline */}
+      {todayJournal?.moodEntries && todayJournal.moodEntries.length > 0 && (
+        <div className="glass-card rounded-3xl p-6">
+          <h3 className="font-semibold text-foreground mb-4">今日心情记录</h3>
           <div className="space-y-3">
             {todayJournal.moodEntries
               .sort((a, b) => b.timestamp - a.timestamp)
@@ -409,26 +589,41 @@ export function Journal() {
                 </div>
               ))}
           </div>
-        ) : (
-          <p className="text-center text-muted-foreground py-4">
-            还没有记录今天的心情，点击上方按钮开始记录
-          </p>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Today's reflection */}
       <div className="glass-card rounded-3xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-foreground">今日反思</h3>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleStartQuestions}
-            className="rounded-xl bg-transparent"
-          >
-            <Edit3 className="w-4 h-4 mr-1" />
-            {todayJournal?.answers?.some((a) => a.content) ? "编辑" : "开始"}
-          </Button>
+          <div className="flex gap-2">
+            {todayJournal?.answers?.some((a) => a.content) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setViewMode("preview")}
+                className="rounded-xl"
+              >
+                <Eye className="w-4 h-4 mr-1" />
+                查看
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (todayJournal?.answers?.some((a) => a.content)) {
+                  setViewMode("bulk-edit");
+                } else {
+                  handleStartQuestions();
+                }
+              }}
+              className="rounded-xl bg-transparent"
+            >
+              <Edit3 className="w-4 h-4 mr-1" />
+              {todayJournal?.answers?.some((a) => a.content) ? "编辑" : "开始"}
+            </Button>
+          </div>
         </div>
 
         {todayJournal?.answers?.some((a) => a.content) ? (
@@ -446,9 +641,13 @@ export function Journal() {
                 );
               })}
             {todayJournal.answers.filter((a) => a.content).length > 2 && (
-              <p className="text-xs text-muted-foreground">
-                还有 {todayJournal.answers.filter((a) => a.content).length - 2} 条记录...
-              </p>
+              <button
+                type="button"
+                onClick={() => setViewMode("preview")}
+                className="text-xs text-primary hover:underline"
+              >
+                查看全部 {todayJournal.answers.filter((a) => a.content).length} 条记录...
+              </button>
             )}
           </div>
         ) : (
@@ -624,6 +823,8 @@ export function Journal() {
       {viewMode === "view" && renderViewMode()}
       {viewMode === "mood" && renderMoodView()}
       {viewMode === "questions" && renderQuestionsView()}
+      {viewMode === "bulk-edit" && renderBulkEditView()}
+      {viewMode === "preview" && renderPreviewView()}
     </div>
   );
 }
