@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { addTodo, getMilestones } from "@/lib/store";
 import type { Milestone } from "@/lib/types";
-import { Star, Calendar, Tag, Target, X } from "lucide-react";
+import { Star, Calendar, Tag, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,9 +37,10 @@ export function AddTaskDialog({
   const [selectedMilestone, setSelectedMilestone] = useState<string>("");
   const [milestones, setMilestones] = useState<Milestone[]>([]);
 
-  const loadMilestones = () => {
+  const loadMilestones = async () => {
     if (user) {
-      setMilestones(getMilestones(user.id));
+      const data = await getMilestones(user.id);
+      setMilestones(data);
     }
   };
 
@@ -60,10 +61,10 @@ export function AddTaskDialog({
     setSelectedMilestone("");
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!user || !title.trim()) return;
 
-    addTodo(user.id, {
+    await addTodo(user.id, {
       title: title.trim(),
       isFocus,
       completed: false,

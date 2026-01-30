@@ -156,12 +156,12 @@ export function Milestones() {
     }
   }, [user]);
 
-  const loadMilestones = () => {
+  const loadMilestones = async () => {
     if (!user) return;
-    setMilestones(getMilestones(user.id));
+    setMilestones(await getMilestones(user.id));
   };
 
-  const handleAddMilestone = () => {
+  const handleAddMilestone = async () => {
     if (!user || !newMilestone.title.trim() || !newMilestone.deadline) return;
 
     // Set default values based on type
@@ -178,7 +178,7 @@ export function Milestones() {
       // currentValue starts at 0, targetValue is the goal count
     }
 
-    addMilestone(user.id, {
+    await addMilestone(user.id, {
       title: newMilestone.title,
       description: newMilestone.description,
       type: newMilestone.type,
@@ -203,9 +203,9 @@ export function Milestones() {
     loadMilestones();
   };
 
-  const handleUpdateProgress = (milestoneId: string, newValue: number) => {
+  const handleUpdateProgress = async (milestoneId: string, newValue: number) => {
     if (!user) return;
-    updateMilestone(user.id, milestoneId, { currentValue: newValue });
+    await updateMilestone(user.id, milestoneId, { currentValue: newValue });
     loadMilestones();
     if (selectedMilestone?.id === milestoneId) {
       setSelectedMilestone({
@@ -215,9 +215,9 @@ export function Milestones() {
     }
   };
 
-  const handleDeleteMilestone = (milestoneId: string) => {
+  const handleDeleteMilestone = async (milestoneId: string) => {
     if (!user) return;
-    deleteMilestone(user.id, milestoneId);
+    await deleteMilestone(user.id, milestoneId);
     setSelectedMilestone(null);
     loadMilestones();
   };
@@ -237,10 +237,10 @@ export function Milestones() {
     setIsEditing(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!user || !selectedMilestone || !editForm.title.trim()) return;
 
-    updateMilestone(user.id, selectedMilestone.id, {
+    await updateMilestone(user.id, selectedMilestone.id, {
       title: editForm.title,
       description: editForm.description,
       type: editForm.type,
@@ -253,7 +253,7 @@ export function Milestones() {
 
     setIsEditing(false);
     loadMilestones();
-    
+
     // Update selected milestone with new values
     setSelectedMilestone({
       ...selectedMilestone,

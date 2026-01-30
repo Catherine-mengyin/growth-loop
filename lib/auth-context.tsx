@@ -7,102 +7,159 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
+import { supabase } from "./supabase";
 import type { User } from "./types";
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (
     username: string,
     email: string,
     password: string
-  ) => Promise<boolean>;
-  logout: () => void;
+  ) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Simple hash function for password (not for production use)
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return hash.toString(16);
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
-    const storedUser = localStorage.getItem("growth_loop_user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
-  }, []);
+    // 获取当前会话
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
 
-  const login = async (username: string, password: string): Promise<boolean> => {
-    const users = JSON.parse(localStorage.getItem("growth_loop_users") || "[]");
-    const hashedPassword = simpleHash(password);
+      if (session?.user) {
+        // 获取用户资料
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("username")
+          .eq("id", session.user.id)
+          .single();
 
-    const foundUser = users.find(
-      (u: { username: string; password: string }) =>
-        u.username === username && u.password === hashedPassword
+        setUser({
+          id: session.user.id,
+          username: profile?.username || session.user.email?.split("@")[0] || "用户",
+          email: session.user.email || "",
+          createdAt: new Date(session.user.created_at).getTime(),
+        });
+      }
+      setIsLoading(false);
+    };
+
+    getSession();
+
+    // 监听认证状态变化
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === "SIGNED_IN" && session?.user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("username")
+            .eq("id", session.user.id)
+            .single();
+
+          setUser({
+            id: session.user.id,
+            username: profile?.username || session.user.email?.split("@")[0] || "用户",
+            email: session.user.email || "",
+            createdAt: new Date(session.user.created_at).getTime(),
+          });
+        } else if (event === "SIGNED_OUT") {
+          setUser(null);
+        }
+      }
     );
 
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem(
-        "growth_loop_user",
-        JSON.stringify(userWithoutPassword)
-      );
-      return true;
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
     }
-    return false;
+
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", data.user.id)
+        .single();
+
+      setUser({
+        id: data.user.id,
+        username: profile?.username || data.user.email?.split("@")[0] || "用户",
+        email: data.user.email || "",
+        createdAt: new Date(data.user.created_at).getTime(),
+      });
+      return { success: true };
+    }
+
+    return { success: false, error: "登录失败" };
   };
 
   const register = async (
     username: string,
     email: string,
     password: string
-  ): Promise<boolean> => {
-    const users = JSON.parse(localStorage.getItem("growth_loop_users") || "[]");
+  ): Promise<{ success: boolean; error?: string }> => {
+    // 先检查用户名是否已存在
+    const { data: existingUser } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("username", username)
+      .single();
 
-    // Check if username already exists
-    if (users.some((u: { username: string }) => u.username === username)) {
-      return false;
+    if (existingUser) {
+      return { success: false, error: "用户名已存在" };
     }
 
-    const newUser = {
-      id: crypto.randomUUID(),
-      username,
+    const { data, error } = await supabase.auth.signUp({
       email,
-      password: simpleHash(password),
-      createdAt: Date.now(),
-    };
+      password,
+    });
 
-    users.push(newUser);
-    localStorage.setItem("growth_loop_users", JSON.stringify(users));
+    if (error) {
+      return { success: false, error: error.message };
+    }
 
-    const { password: _, ...userWithoutPassword } = newUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem(
-      "growth_loop_user",
-      JSON.stringify(userWithoutPassword)
-    );
-    return true;
+    if (data.user) {
+      // 创建用户资料
+      const { error: profileError } = await supabase.from("profiles").insert({
+        id: data.user.id,
+        username,
+      });
+
+      if (profileError) {
+        return { success: false, error: "创建用户资料失败" };
+      }
+
+      setUser({
+        id: data.user.id,
+        username,
+        email: data.user.email || "",
+        createdAt: new Date(data.user.created_at).getTime(),
+      });
+      return { success: true };
+    }
+
+    return { success: false, error: "注册失败" };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem("growth_loop_user");
   };
 
   return (

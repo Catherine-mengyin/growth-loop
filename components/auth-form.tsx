@@ -25,9 +25,9 @@ export function AuthForm() {
 
     try {
       if (isLogin) {
-        const success = await login(username, password);
-        if (!success) {
-          setError("用户名或密码错误");
+        const result = await login(email, password);
+        if (!result.success) {
+          setError(result.error || "邮箱或密码错误");
         }
       } else {
         if (password.length < 6) {
@@ -35,9 +35,9 @@ export function AuthForm() {
           setIsLoading(false);
           return;
         }
-        const success = await register(username, email, password);
-        if (!success) {
-          setError("用户名已存在");
+        const result = await register(username, email, password);
+        if (!result.success) {
+          setError(result.error || "注册失败");
         }
       }
     } catch {
@@ -94,37 +94,37 @@ export function AuthForm() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium">
-                用户名
-              </Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="请输入用户名"
-                required
-                className="h-12 rounded-xl border-border/50 bg-white/50 focus:bg-white transition-colors"
-              />
-            </div>
-
             {!isLogin && (
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium">
-                  邮箱
+                <Label htmlFor="username" className="text-sm font-medium">
+                  用户名
                 </Label>
                 <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="请输入邮箱"
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="请输入用户名"
                   required
                   className="h-12 rounded-xl border-border/50 bg-white/50 focus:bg-white transition-colors"
                 />
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-sm font-medium">
+                邮箱
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="请输入邮箱"
+                required
+                className="h-12 rounded-xl border-border/50 bg-white/50 focus:bg-white transition-colors"
+              />
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="password" className="text-sm font-medium">

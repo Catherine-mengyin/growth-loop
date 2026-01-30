@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import {
   getTodos,
@@ -17,7 +17,6 @@ import {
   Trash2,
   Calendar,
   Edit3,
-  X,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -74,25 +73,30 @@ export function Dashboard() {
     isFocus: false,
   });
 
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    const [todosData, energyData, streakData] = await Promise.all([
+      getTodos(user.id),
+      getWeeklyEnergy(user.id),
+      getStreak(user.id),
+    ]);
+    setTodos(todosData);
+    setWeeklyEnergy(energyData);
+    setStreak(streakData);
+  }, [user]);
+
   useEffect(() => {
     if (user) {
       loadData();
     }
-  }, [user]);
-
-  const loadData = () => {
-    if (!user) return;
-    setTodos(getTodos(user.id));
-    setWeeklyEnergy(getWeeklyEnergy(user.id));
-    setStreak(getStreak(user.id));
-  };
+  }, [user, loadData]);
 
   const focusTodo = todos.find((t) => t.isFocus && !t.completed);
   const otherTodos = todos.filter(
     (t) => !t.completed && (!t.isFocus || t.id !== focusTodo?.id)
   );
 
-  const handleToggleTodo = (todoId: string, completed: boolean) => {
+  const handleToggleTodo = async (todoId: string, completed: boolean) => {
     if (!user) return;
     if (!completed) {
       setCompletedAnimation(todoId);
@@ -100,13 +104,13 @@ export function Dashboard() {
         setCompletedAnimation(null);
       }, 600);
     }
-    updateTodo(user.id, todoId, { completed: !completed });
+    await updateTodo(user.id, todoId, { completed: !completed });
     loadData();
   };
 
-  const handleDeleteTodo = (todoId: string) => {
+  const handleDeleteTodo = async (todoId: string) => {
     if (!user) return;
-    deleteTodo(user.id, todoId);
+    await deleteTodo(user.id, todoId);
     loadData();
   };
 
@@ -120,10 +124,10 @@ export function Dashboard() {
     });
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!user || !editingTodo || !editForm.title.trim()) return;
 
-    updateTodo(user.id, editingTodo.id, {
+    await updateTodo(user.id, editingTodo.id, {
       title: editForm.title,
       dueDate: new Date(editForm.dueDate).getTime(),
       tags: editForm.tags
@@ -220,7 +224,6 @@ export function Dashboard() {
           <h3 className="text-sm font-semibold text-foreground mb-4">
             本周成长能量
           </h3>
-          {console.log("[v0] weeklyEnergy data:", weeklyEnergy)}
           <div className="h-32">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weeklyEnergy} barCategoryGap="20%">

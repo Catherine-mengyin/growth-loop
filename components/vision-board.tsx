@@ -48,15 +48,15 @@ export function VisionBoard() {
     }
   }, [user]);
 
-  const loadVisions = () => {
+  const loadVisions = async () => {
     if (!user) return;
-    setVisions(getVisions(user.id));
+    setVisions(await getVisions(user.id));
   };
 
-  const handleAddVision = () => {
+  const handleAddVision = async () => {
     if (!user || !newVision.title.trim()) return;
 
-    addVision(user.id, {
+    await addVision(user.id, {
       title: newVision.title,
       description: newVision.description,
       category: newVision.category,
@@ -77,17 +77,17 @@ export function VisionBoard() {
     setIsDialogOpen(true);
   };
 
-  const handleSaveVision = () => {
+  const handleSaveVision = async () => {
     if (!user || !newVision.title.trim()) return;
 
     if (editingVision) {
-      updateVision(user.id, editingVision.id, {
+      await updateVision(user.id, editingVision.id, {
         title: newVision.title,
         description: newVision.description,
         category: newVision.category,
       });
     } else {
-      addVision(user.id, {
+      await addVision(user.id, {
         title: newVision.title,
         description: newVision.description,
         category: newVision.category,
@@ -106,9 +106,9 @@ export function VisionBoard() {
     setNewVision({ title: "", description: "", category: "life" });
   };
 
-  const handleDeleteVision = (visionId: string) => {
+  const handleDeleteVision = async (visionId: string) => {
     if (!user) return;
-    deleteVision(user.id, visionId);
+    await deleteVision(user.id, visionId);
     loadVisions();
   };
 

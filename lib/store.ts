@@ -1,270 +1,489 @@
-import type { Todo, Milestone, Vision, Journal, WeeklyEnergy } from "./types";
-
-const STORAGE_KEYS = {
-  TODOS: "growth_loop_todos",
-  MILESTONES: "growth_loop_milestones",
-  VISIONS: "growth_loop_visions",
-  JOURNALS: "growth_loop_journals",
-};
-
-// Generic storage helpers
-function getFromStorage<T>(key: string, userId: string): T[] {
-  if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(`${key}_${userId}`);
-  return data ? JSON.parse(data) : [];
-}
-
-function saveToStorage<T>(key: string, userId: string, data: T[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(`${key}_${userId}`, JSON.stringify(data));
-}
+import { supabase } from "./supabase";
+import type { Todo, Milestone, Vision, Journal, WeeklyEnergy, MoodEntry } from "./types";
 
 // Todos
-export function getTodos(userId: string): Todo[] {
-  return getFromStorage<Todo>(STORAGE_KEYS.TODOS, userId);
+export async function getTodos(userId: string): Promise<Todo[]> {
+  const { data, error } = await supabase
+    .from("todos")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching todos:", error);
+    return [];
+  }
+
+  return data.map((t) => ({
+    id: t.id,
+    title: t.title,
+    isFocus: t.is_focus,
+    completed: t.completed,
+    milestoneId: t.milestone_id,
+    dueDate: new Date(t.due_date).getTime(),
+    tags: t.tags || [],
+    createdAt: new Date(t.created_at).getTime(),
+  }));
 }
 
-export function saveTodos(userId: string, todos: Todo[]): void {
-  saveToStorage(STORAGE_KEYS.TODOS, userId, todos);
-}
+export async function addTodo(
+  userId: string,
+  todo: Omit<Todo, "id" | "createdAt">
+): Promise<Todo | null> {
+  const { data, error } = await supabase
+    .from("todos")
+    .insert({
+      user_id: userId,
+      title: todo.title,
+      is_focus: todo.isFocus,
+      completed: todo.completed,
+      milestone_id: todo.milestoneId,
+      due_date: new Date(todo.dueDate).toISOString(),
+      tags: todo.tags,
+    })
+    .select()
+    .single();
 
-export function addTodo(userId: string, todo: Omit<Todo, "id" | "createdAt">): Todo {
-  const todos = getTodos(userId);
-  const newTodo: Todo = {
-    ...todo,
-    id: crypto.randomUUID(),
-    createdAt: Date.now(),
+  if (error) {
+    console.error("Error adding todo:", error);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    title: data.title,
+    isFocus: data.is_focus,
+    completed: data.completed,
+    milestoneId: data.milestone_id,
+    dueDate: new Date(data.due_date).getTime(),
+    tags: data.tags || [],
+    createdAt: new Date(data.created_at).getTime(),
   };
-  todos.push(newTodo);
-  saveTodos(userId, todos);
-  return newTodo;
 }
 
-export function updateTodo(userId: string, todoId: string, updates: Partial<Todo>): void {
-  const todos = getTodos(userId);
-  const index = todos.findIndex((t) => t.id === todoId);
-  if (index !== -1) {
-    todos[index] = { ...todos[index], ...updates };
-    saveTodos(userId, todos);
+export async function updateTodo(
+  userId: string,
+  todoId: string,
+  updates: Partial<Todo>
+): Promise<void> {
+  const dbUpdates: Record<string, unknown> = {};
+  if (updates.title !== undefined) dbUpdates.title = updates.title;
+  if (updates.isFocus !== undefined) dbUpdates.is_focus = updates.isFocus;
+  if (updates.completed !== undefined) dbUpdates.completed = updates.completed;
+  if (updates.milestoneId !== undefined) dbUpdates.milestone_id = updates.milestoneId;
+  if (updates.dueDate !== undefined) dbUpdates.due_date = new Date(updates.dueDate).toISOString();
+  if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
+
+  const { error } = await supabase
+    .from("todos")
+    .update(dbUpdates)
+    .eq("id", todoId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Error updating todo:", error);
   }
 }
 
-export function deleteTodo(userId: string, todoId: string): void {
-  const todos = getTodos(userId).filter((t) => t.id !== todoId);
-  saveTodos(userId, todos);
+export async function deleteTodo(userId: string, todoId: string): Promise<void> {
+  const { error } = await supabase
+    .from("todos")
+    .delete()
+    .eq("id", todoId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Error deleting todo:", error);
+  }
 }
 
 // Milestones
-export function getMilestones(userId: string): Milestone[] {
-  return getFromStorage<Milestone>(STORAGE_KEYS.MILESTONES, userId);
+export async function getMilestones(userId: string): Promise<Milestone[]> {
+  const { data, error } = await supabase
+    .from("milestones")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching milestones:", error);
+    return [];
+  }
+
+  return data.map((m) => ({
+    id: m.id,
+    title: m.title,
+    description: m.description,
+    type: m.type as Milestone["type"],
+    startValue: Number(m.start_value),
+    targetValue: Number(m.target_value),
+    currentValue: Number(m.current_value),
+    deadline: new Date(m.deadline).getTime(),
+    colorTheme: m.color_theme as Milestone["colorTheme"],
+    createdAt: new Date(m.created_at).getTime(),
+  }));
 }
 
-export function saveMilestones(userId: string, milestones: Milestone[]): void {
-  saveToStorage(STORAGE_KEYS.MILESTONES, userId, milestones);
-}
-
-export function addMilestone(
+export async function addMilestone(
   userId: string,
   milestone: Omit<Milestone, "id" | "createdAt">
-): Milestone {
-  const milestones = getMilestones(userId);
-  const newMilestone: Milestone = {
-    ...milestone,
-    id: crypto.randomUUID(),
-    createdAt: Date.now(),
+): Promise<Milestone | null> {
+  const { data, error } = await supabase
+    .from("milestones")
+    .insert({
+      user_id: userId,
+      title: milestone.title,
+      description: milestone.description,
+      type: milestone.type,
+      start_value: milestone.startValue,
+      target_value: milestone.targetValue,
+      current_value: milestone.currentValue,
+      deadline: new Date(milestone.deadline).toISOString(),
+      color_theme: milestone.colorTheme,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error adding milestone:", error);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    title: data.title,
+    description: data.description,
+    type: data.type as Milestone["type"],
+    startValue: Number(data.start_value),
+    targetValue: Number(data.target_value),
+    currentValue: Number(data.current_value),
+    deadline: new Date(data.deadline).getTime(),
+    colorTheme: data.color_theme as Milestone["colorTheme"],
+    createdAt: new Date(data.created_at).getTime(),
   };
-  milestones.push(newMilestone);
-  saveMilestones(userId, milestones);
-  return newMilestone;
 }
 
-export function updateMilestone(
+export async function updateMilestone(
   userId: string,
   milestoneId: string,
   updates: Partial<Milestone>
-): void {
-  const milestones = getMilestones(userId);
-  const index = milestones.findIndex((m) => m.id === milestoneId);
-  if (index !== -1) {
-    milestones[index] = { ...milestones[index], ...updates };
-    saveMilestones(userId, milestones);
+): Promise<void> {
+  const dbUpdates: Record<string, unknown> = {};
+  if (updates.title !== undefined) dbUpdates.title = updates.title;
+  if (updates.description !== undefined) dbUpdates.description = updates.description;
+  if (updates.type !== undefined) dbUpdates.type = updates.type;
+  if (updates.startValue !== undefined) dbUpdates.start_value = updates.startValue;
+  if (updates.targetValue !== undefined) dbUpdates.target_value = updates.targetValue;
+  if (updates.currentValue !== undefined) dbUpdates.current_value = updates.currentValue;
+  if (updates.deadline !== undefined) dbUpdates.deadline = new Date(updates.deadline).toISOString();
+  if (updates.colorTheme !== undefined) dbUpdates.color_theme = updates.colorTheme;
+
+  const { error } = await supabase
+    .from("milestones")
+    .update(dbUpdates)
+    .eq("id", milestoneId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Error updating milestone:", error);
   }
 }
 
-export function deleteMilestone(userId: string, milestoneId: string): void {
-  const milestones = getMilestones(userId).filter((m) => m.id !== milestoneId);
-  saveMilestones(userId, milestones);
+export async function deleteMilestone(userId: string, milestoneId: string): Promise<void> {
+  const { error } = await supabase
+    .from("milestones")
+    .delete()
+    .eq("id", milestoneId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Error deleting milestone:", error);
+  }
 }
 
 // Visions
-export function getVisions(userId: string): Vision[] {
-  return getFromStorage<Vision>(STORAGE_KEYS.VISIONS, userId);
+export async function getVisions(userId: string): Promise<Vision[]> {
+  const { data, error } = await supabase
+    .from("visions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching visions:", error);
+    return [];
+  }
+
+  return data.map((v) => ({
+    id: v.id,
+    title: v.title,
+    description: v.description,
+    imageUrl: v.image_url,
+    category: v.category,
+    createdAt: new Date(v.created_at).getTime(),
+  }));
 }
 
-export function saveVisions(userId: string, visions: Vision[]): void {
-  saveToStorage(STORAGE_KEYS.VISIONS, userId, visions);
-}
+export async function addVision(
+  userId: string,
+  vision: Omit<Vision, "id" | "createdAt">
+): Promise<Vision | null> {
+  const { data, error } = await supabase
+    .from("visions")
+    .insert({
+      user_id: userId,
+      title: vision.title,
+      description: vision.description,
+      image_url: vision.imageUrl,
+      category: vision.category,
+    })
+    .select()
+    .single();
 
-export function addVision(userId: string, vision: Omit<Vision, "id" | "createdAt">): Vision {
-  const visions = getVisions(userId);
-  const newVision: Vision = {
-    ...vision,
-    id: crypto.randomUUID(),
-    createdAt: Date.now(),
+  if (error) {
+    console.error("Error adding vision:", error);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    title: data.title,
+    description: data.description,
+    imageUrl: data.image_url,
+    category: data.category,
+    createdAt: new Date(data.created_at).getTime(),
   };
-  visions.push(newVision);
-  saveVisions(userId, visions);
-  return newVision;
 }
 
-export function updateVision(userId: string, visionId: string, updates: Partial<Vision>): void {
-  const visions = getVisions(userId);
-  const index = visions.findIndex((v) => v.id === visionId);
-  if (index !== -1) {
-    visions[index] = { ...visions[index], ...updates };
-    saveVisions(userId, visions);
+export async function updateVision(
+  userId: string,
+  visionId: string,
+  updates: Partial<Vision>
+): Promise<void> {
+  const dbUpdates: Record<string, unknown> = {};
+  if (updates.title !== undefined) dbUpdates.title = updates.title;
+  if (updates.description !== undefined) dbUpdates.description = updates.description;
+  if (updates.imageUrl !== undefined) dbUpdates.image_url = updates.imageUrl;
+  if (updates.category !== undefined) dbUpdates.category = updates.category;
+
+  const { error } = await supabase
+    .from("visions")
+    .update(dbUpdates)
+    .eq("id", visionId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Error updating vision:", error);
   }
 }
 
-export function deleteVision(userId: string, visionId: string): void {
-  const visions = getVisions(userId).filter((v) => v.id !== visionId);
-  saveVisions(userId, visions);
+export async function deleteVision(userId: string, visionId: string): Promise<void> {
+  const { error } = await supabase
+    .from("visions")
+    .delete()
+    .eq("id", visionId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("Error deleting vision:", error);
+  }
 }
 
 // Journals
-export function getJournals(userId: string): Journal[] {
-  return getFromStorage<Journal>(STORAGE_KEYS.JOURNALS, userId);
+export async function getJournals(userId: string): Promise<Journal[]> {
+  const { data, error } = await supabase
+    .from("journals")
+    .select(`
+      *,
+      mood_entries (*),
+      journal_answers (*)
+    `)
+    .eq("user_id", userId)
+    .order("date", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching journals:", error);
+    return [];
+  }
+
+  return data.map((j) => ({
+    id: j.id,
+    date: j.date,
+    moodEntries: (j.mood_entries || []).map((e: { id: string; mood: number; note: string | null; timestamp: string }) => ({
+      id: e.id,
+      mood: e.mood as MoodEntry["mood"],
+      note: e.note || undefined,
+      timestamp: new Date(e.timestamp).getTime(),
+    })),
+    answers: (j.journal_answers || []).map((a: { question_id: string; content: string }) => ({
+      questionId: a.question_id,
+      content: a.content,
+    })),
+    createdAt: new Date(j.created_at).getTime(),
+    updatedAt: new Date(j.updated_at).getTime(),
+  }));
 }
 
-export function saveJournals(userId: string, journals: Journal[]): void {
-  saveToStorage(STORAGE_KEYS.JOURNALS, userId, journals);
-}
+export async function getJournalByDate(userId: string, date: string): Promise<Journal | undefined> {
+  const { data, error } = await supabase
+    .from("journals")
+    .select(`
+      *,
+      mood_entries (*),
+      journal_answers (*)
+    `)
+    .eq("user_id", userId)
+    .eq("date", date)
+    .single();
 
-export function addJournal(
-  userId: string,
-  journal: Omit<Journal, "id" | "createdAt" | "updatedAt">
-): Journal {
-  const journals = getJournals(userId);
-  const now = Date.now();
-  const newJournal: Journal = {
-    ...journal,
-    id: crypto.randomUUID(),
-    createdAt: now,
-    updatedAt: now,
+  if (error || !data) {
+    return undefined;
+  }
+
+  return {
+    id: data.id,
+    date: data.date,
+    moodEntries: (data.mood_entries || []).map((e: { id: string; mood: number; note: string | null; timestamp: string }) => ({
+      id: e.id,
+      mood: e.mood as MoodEntry["mood"],
+      note: e.note || undefined,
+      timestamp: new Date(e.timestamp).getTime(),
+    })),
+    answers: (data.journal_answers || []).map((a: { question_id: string; content: string }) => ({
+      questionId: a.question_id,
+      content: a.content,
+    })),
+    createdAt: new Date(data.created_at).getTime(),
+    updatedAt: new Date(data.updated_at).getTime(),
   };
-  journals.push(newJournal);
-  saveJournals(userId, journals);
-  return newJournal;
 }
 
-// Get or create today's journal
-export function getOrCreateTodayJournal(userId: string): Journal {
+export async function getOrCreateTodayJournal(userId: string): Promise<Journal> {
   const today = new Date().toISOString().split("T")[0];
-  let journal = getJournalByDate(userId, today);
+  let journal = await getJournalByDate(userId, today);
 
   if (!journal) {
-    journal = addJournal(userId, {
-      date: today,
+    const { data, error } = await supabase
+      .from("journals")
+      .insert({
+        user_id: userId,
+        date: today,
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      throw new Error("Failed to create journal");
+    }
+
+    journal = {
+      id: data.id,
+      date: data.date,
       moodEntries: [],
       answers: [],
-    });
+      createdAt: new Date(data.created_at).getTime(),
+      updatedAt: new Date(data.updated_at).getTime(),
+    };
   }
 
   return journal;
 }
 
-// Add a mood entry to a journal
-export function addMoodEntry(
+export async function addMoodEntry(
   userId: string,
   journalId: string,
   mood: 1 | 2 | 3 | 4 | 5,
   note?: string
-): void {
-  const journals = getJournals(userId);
-  const index = journals.findIndex((j) => j.id === journalId);
+): Promise<void> {
+  const { error } = await supabase.from("mood_entries").insert({
+    journal_id: journalId,
+    mood,
+    note,
+  });
 
-  if (index !== -1) {
-    const newEntry = {
-      id: crypto.randomUUID(),
-      mood,
-      note,
-      timestamp: Date.now(),
-    };
-    // Ensure moodEntries array exists (for backward compatibility with old data)
-    if (!journals[index].moodEntries) {
-      journals[index].moodEntries = [];
-    }
-    journals[index].moodEntries.push(newEntry);
-    journals[index].updatedAt = Date.now();
-    saveJournals(userId, journals);
+  if (error) {
+    console.error("Error adding mood entry:", error);
+    return;
   }
+
+  // Update journal's updated_at
+  await supabase
+    .from("journals")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", journalId);
 }
 
-// Update a mood entry
-export function updateMoodEntry(
+export async function updateMoodEntry(
   userId: string,
   journalId: string,
   entryId: string,
   updates: { mood?: 1 | 2 | 3 | 4 | 5; note?: string }
-): void {
-  const journals = getJournals(userId);
-  const journalIndex = journals.findIndex((j) => j.id === journalId);
+): Promise<void> {
+  const { error } = await supabase
+    .from("mood_entries")
+    .update(updates)
+    .eq("id", entryId);
 
-  if (journalIndex !== -1) {
-    // Ensure moodEntries array exists
-    if (!journals[journalIndex].moodEntries) {
-      journals[journalIndex].moodEntries = [];
-      return;
-    }
-    const entryIndex = journals[journalIndex].moodEntries.findIndex((e) => e.id === entryId);
-    if (entryIndex !== -1) {
-      journals[journalIndex].moodEntries[entryIndex] = {
-        ...journals[journalIndex].moodEntries[entryIndex],
-        ...updates,
-      };
-      journals[journalIndex].updatedAt = Date.now();
-      saveJournals(userId, journals);
-    }
+  if (error) {
+    console.error("Error updating mood entry:", error);
+    return;
   }
+
+  await supabase
+    .from("journals")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", journalId);
 }
 
-// Delete a mood entry
-export function deleteMoodEntry(userId: string, journalId: string, entryId: string): void {
-  const journals = getJournals(userId);
-  const journalIndex = journals.findIndex((j) => j.id === journalId);
+export async function deleteMoodEntry(
+  userId: string,
+  journalId: string,
+  entryId: string
+): Promise<void> {
+  const { error } = await supabase.from("mood_entries").delete().eq("id", entryId);
 
-  if (journalIndex !== -1) {
-    // Ensure moodEntries array exists
-    if (!journals[journalIndex].moodEntries) {
-      journals[journalIndex].moodEntries = [];
-      return;
+  if (error) {
+    console.error("Error deleting mood entry:", error);
+    return;
+  }
+
+  await supabase
+    .from("journals")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", journalId);
+}
+
+export async function updateJournal(
+  userId: string,
+  journalId: string,
+  updates: Partial<Journal>
+): Promise<void> {
+  // Handle answers update
+  if (updates.answers) {
+    // Delete existing answers and insert new ones
+    await supabase.from("journal_answers").delete().eq("journal_id", journalId);
+
+    if (updates.answers.length > 0) {
+      await supabase.from("journal_answers").insert(
+        updates.answers.map((a) => ({
+          journal_id: journalId,
+          question_id: a.questionId,
+          content: a.content,
+        }))
+      );
     }
-    journals[journalIndex].moodEntries = journals[journalIndex].moodEntries.filter(
-      (e) => e.id !== entryId
-    );
-    journals[journalIndex].updatedAt = Date.now();
-    saveJournals(userId, journals);
   }
-}
 
-export function getJournalByDate(userId: string, date: string): Journal | undefined {
-  return getJournals(userId).find((j) => j.date === date);
-}
-
-export function updateJournal(userId: string, journalId: string, updates: Partial<Journal>): void {
-  const journals = getJournals(userId);
-  const index = journals.findIndex((j) => j.id === journalId);
-  if (index !== -1) {
-    journals[index] = { ...journals[index], ...updates, updatedAt: Date.now() };
-    saveJournals(userId, journals);
-  }
+  await supabase
+    .from("journals")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", journalId);
 }
 
 // Weekly Energy calculation
-// Energy is based on: journal mood (40%), task completion (40%), having a journal entry (20%)
-export function getWeeklyEnergy(userId: string): WeeklyEnergy[] {
-  const todos = getTodos(userId);
-  const journals = getJournals(userId);
+export async function getWeeklyEnergy(userId: string): Promise<WeeklyEnergy[]> {
+  const todos = await getTodos(userId);
+  const journals = await getJournals(userId);
   const days = ["一", "二", "三", "四", "五", "六", "日"];
 
   const today = new Date();
@@ -274,29 +493,24 @@ export function getWeeklyEnergy(userId: string): WeeklyEnergy[] {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split("T")[0];
-    const dayIndex = (date.getDay() + 6) % 7; // Monday = 0
+    const dayIndex = (date.getDay() + 6) % 7;
 
     let energy = 0;
     let hasActivity = false;
 
-    // 1. Journal mood contributes 40% (mood 1-5 maps to 8-40 points)
-    // Use average mood if multiple entries exist
     const journal = journals.find((j) => j.date === dateStr);
     if (journal && journal.moodEntries && journal.moodEntries.length > 0) {
       const avgMood =
         journal.moodEntries.reduce((sum, e) => sum + e.mood, 0) / journal.moodEntries.length;
-      energy += Math.round(avgMood * 8); // 8-40 points based on average mood
+      energy += Math.round(avgMood * 8);
       hasActivity = true;
     }
 
-    // 2. Having a journal entry contributes 20% (20 points bonus)
     if (journal && (journal.moodEntries?.length > 0 || journal.answers?.length > 0)) {
       energy += 20;
       hasActivity = true;
     }
 
-    // 3. Task completion contributes 40%
-    // Check tasks that were created/due around this date
     const relevantTodos = todos.filter((t) => {
       const todoDate = new Date(t.dueDate).toISOString().split("T")[0];
       return todoDate === dateStr;
@@ -305,14 +519,12 @@ export function getWeeklyEnergy(userId: string): WeeklyEnergy[] {
     if (relevantTodos.length > 0) {
       const completedCount = relevantTodos.filter((t) => t.completed).length;
       const completionRate = completedCount / relevantTodos.length;
-      energy += Math.round(completionRate * 40); // 0-40 points
+      energy += Math.round(completionRate * 40);
       hasActivity = true;
     }
 
-    // If no activity at all for this day, show a small baseline (10) to indicate the day exists
-    // but only for past days including today
     if (!hasActivity && i >= 0) {
-      energy = 10; // Small baseline value so the bar is visible
+      energy = 10;
     }
 
     weekData.push({
@@ -325,8 +537,8 @@ export function getWeeklyEnergy(userId: string): WeeklyEnergy[] {
 }
 
 // Streak calculation
-export function getStreak(userId: string): number {
-  const todos = getTodos(userId);
+export async function getStreak(userId: string): Promise<number> {
+  const todos = await getTodos(userId);
   const completedDates = new Set<string>();
 
   for (const todo of todos) {
@@ -352,4 +564,58 @@ export function getStreak(userId: string): number {
   }
 
   return streak;
+}
+
+// Legacy sync functions (no-ops for backward compatibility)
+export function saveTodos(): void {}
+export function saveMilestones(): void {}
+export function saveVisions(): void {}
+export function saveJournals(): void {}
+export async function addJournal(
+  userId: string,
+  journal: Omit<Journal, "id" | "createdAt" | "updatedAt">
+): Promise<Journal> {
+  const { data, error } = await supabase
+    .from("journals")
+    .insert({
+      user_id: userId,
+      date: journal.date,
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    throw new Error("Failed to create journal");
+  }
+
+  // Insert mood entries if any
+  if (journal.moodEntries && journal.moodEntries.length > 0) {
+    await supabase.from("mood_entries").insert(
+      journal.moodEntries.map((e) => ({
+        journal_id: data.id,
+        mood: e.mood,
+        note: e.note,
+      }))
+    );
+  }
+
+  // Insert answers if any
+  if (journal.answers && journal.answers.length > 0) {
+    await supabase.from("journal_answers").insert(
+      journal.answers.map((a) => ({
+        journal_id: data.id,
+        question_id: a.questionId,
+        content: a.content,
+      }))
+    );
+  }
+
+  return {
+    id: data.id,
+    date: data.date,
+    moodEntries: journal.moodEntries || [],
+    answers: journal.answers || [],
+    createdAt: new Date(data.created_at).getTime(),
+    updatedAt: new Date(data.updated_at).getTime(),
+  };
 }

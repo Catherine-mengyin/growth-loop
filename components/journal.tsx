@@ -114,11 +114,11 @@ export function Journal() {
     }
   }, [user]);
 
-  const loadData = () => {
+  const loadData = async () => {
     if (!user) return;
-    const allJournals = getJournals(user.id);
+    const allJournals = await getJournals(user.id);
     setJournals(allJournals.sort((a, b) => b.createdAt - a.createdAt));
-    const existing = getJournalByDate(user.id, today);
+    const existing = await getJournalByDate(user.id, today);
     if (existing) {
       setTodayJournal(existing);
       const answerMap: Record<string, string> = {};
@@ -151,21 +151,21 @@ export function Journal() {
   };
 
   // Save mood entry
-  const handleSaveMood = () => {
+  const handleSaveMood = async () => {
     if (!user || selectedMood === null) return;
 
     // Ensure today's journal exists
-    const journal = getOrCreateTodayJournal(user.id);
+    const journal = await getOrCreateTodayJournal(user.id);
 
     if (editingMoodEntry) {
       // Update existing entry
-      updateMoodEntry(user.id, journal.id, editingMoodEntry.id, {
+      await updateMoodEntry(user.id, journal.id, editingMoodEntry.id, {
         mood: selectedMood as 1 | 2 | 3 | 4 | 5,
         note: moodNote.trim() || undefined,
       });
     } else {
       // Add new entry
-      addMoodEntry(user.id, journal.id, selectedMood as 1 | 2 | 3 | 4 | 5, moodNote.trim() || undefined);
+      await addMoodEntry(user.id, journal.id, selectedMood as 1 | 2 | 3 | 4 | 5, moodNote.trim() || undefined);
     }
 
     setEditingMoodEntry(null);
@@ -174,9 +174,9 @@ export function Journal() {
   };
 
   // Delete mood entry
-  const handleDeleteMoodEntry = (entryId: string) => {
+  const handleDeleteMoodEntry = async (entryId: string) => {
     if (!user || !todayJournal) return;
-    deleteMoodEntry(user.id, todayJournal.id, entryId);
+    await deleteMoodEntry(user.id, todayJournal.id, entryId);
     loadData();
   };
 
@@ -187,16 +187,16 @@ export function Journal() {
   };
 
   // Save questions
-  const handleSaveQuestions = () => {
+  const handleSaveQuestions = async () => {
     if (!user) return;
 
-    const journal = getOrCreateTodayJournal(user.id);
+    const journal = await getOrCreateTodayJournal(user.id);
     const journalAnswers = Object.entries(answers).map(([questionId, content]) => ({
       questionId,
       content,
     }));
 
-    updateJournal(user.id, journal.id, { answers: journalAnswers });
+    await updateJournal(user.id, journal.id, { answers: journalAnswers });
     loadData();
     setViewMode("list");
   };
